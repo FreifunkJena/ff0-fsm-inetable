@@ -16,6 +16,23 @@ if we_own_our_ip; then
     p2ptbl update $gwiptbl $CurrentOct3 free $(get_iface)
 fi
 
+# stop n2n
+n2npids=$(pgrep edge)
+for line in $n2npids; do 
+ kill $line
+done;
+
+# stop exit-vpn if running
+if [ -e /var/run/openvpn-exitvpn.pid ]; then
+    opid=$(cat /var/run/openvpn-exitvpn.pid)
+    kill $opid
+    iptables -D FORWARD -i br-mesh -o tunff -j ACCEPT
+    iptables -D FORWARD -i tunff -o br-mesh -j ACCEPT
+    iptables -t nat -D POSTROUTING -o tunff -j MASQUERADE
+    iptables -D INPUT -i tunff -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    iptables -D INPUT -i tunff -j REJECT
+fi
+
 # disable DHCP
 mesh_remove_dhcp
 /etc/init.d/dnsmasq restart
