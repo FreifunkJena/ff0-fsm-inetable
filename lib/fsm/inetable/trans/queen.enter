@@ -2,15 +2,18 @@
 logger -t fsm queen.enter
 . ../common.sh
 
+queenrange=$(uci -q get network.$interface.net_queenrange)
+queenrange_start=$(echo $queenrange | cut -f1 -d' ')
+queenrange_end=$(echo $queenrange | cut -f2 -d' ')
+
+[ -n "$queenrange_start" ] 
+[ -n "$queenrange_end" ] 
+
 ## start exit vpn if /etc/openvpn/exitvpn.conf exists
 if [ -e /etc/openvpn/exitvpn.conf ]
     then /usr/sbin/openvpn --syslog openvpn[exitvpn] --writepid /var/run/openvpn-exitvpn.pid --config /etc/openvpn/exitvpn.conf --daemon
-    iptables -I FORWARD -i br-mesh -o tunff -j ACCEPT
-    iptables -I FORWARD -i tunff -o br-mesh -j ACCEPT
-    iptables -t nat -A POSTROUTING -o tunff -j MASQUERADE
-    iptables -A INPUT -i tunff -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-    iptables -A INPUT -i tunff -j REJECT
 fi
+
 
 ## setup gateway IPv4
 # determine gw IP from p2ptable
@@ -22,6 +25,7 @@ getoct () {
 			p2ptbl show $gwiptbl \
 			| cut -f1,2 \
 			| egrep "[0-9]*"$'\t'"$1" \
+			| awk -v Frst=$queenrange_start -v Last=$queenrange_end ' $1 >= Frst && $1 <= Last ' \
 			| $2 \
 			| head -n1 \
 			| cut -f1
@@ -30,6 +34,7 @@ getoct () {
 			p2ptbl show $gwiptbl \
 			| grep "$NodeId" \
 			| cut -f1,2 \
+			| awk -v Frst=$queenrange_start -v Last=$queenrange_end ' $1 >= Frst && $1 <= Last ' \
 			| $2 \
 			| head -n1 \
 			| cut -f1
@@ -59,13 +64,8 @@ p2ptbl update $gwiptbl $oct3 "queen\t$NodeId" $(get_iface)
 # activate gw mode
 batctl -m $(uci get network.$interface.batman_iface) gw server
 
-# start n2n edge
-
 # set up gw IP
 mesh_add_ipv4 $gwip 255.255.0.0
-
-# start n2n
-loadn2n
 
 ## setup DHCP
 mesh_set_dhcp $dhcp_start $dhcp_end 255.255.0.0
@@ -76,7 +76,7 @@ splash_sync
 
 # redirect tcp to local httpd, dns to local ns
 iptables -t nat -F prerouting_inet_unsplashed
-iptables -t nat -A prerouting_inet_unsplashed -i $real_iface -p tcp            -j DNAT --to $gwip:81
+iptables -t nat -A prerouting_inet_unsplashed -i $real_iface -p tcp --dport 80 -j DNAT --to $gwip:81
 iptables -t nat -A prerouting_inet_unsplashed -i $real_iface -p udp --dport 53 -j DNAT --to $gwip:53
 
 # Always allow traffic to freifunk-rheinland web server, freifunk-rheinland image server and openwrt.org
@@ -85,4 +85,5 @@ iptables -t nat -I prerouting_inet_unsplashed -d 5.9.112.157 -j ACCEPT
 iptables -t nat -I prerouting_inet_unsplashed -d 78.24.191.177 -j ACCEPT
 iptables -t nat -I prerouting_inet_unsplashed -d 144.76.72.180 -j ACCEPT
 # TODO: discard any other UDP traffic
+
 

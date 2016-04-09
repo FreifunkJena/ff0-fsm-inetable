@@ -17,7 +17,7 @@ wan_iface=$(get_iface wan)
 iptables -t nat -F PREROUTING
 
 # Add masquerading for wan interface
-iptables -t nat -A postrouting_rule -o $(uci get network.wan.ifname) -j MASQUERADE
+iptables -t nat -A postrouting_rule -o $wan_iface -j MASQUERADE
 
 # Add masquerading for br-mesh if packets come from lan
 iptables -t nat -A postrouting_rule -o br-mesh -s 192.168.210.0/24 -j MASQUERADE
@@ -25,6 +25,7 @@ iptables -t nat -A postrouting_rule -o br-mesh -s 192.168.210.0/24 -j MASQUERADE
 # Allow routing between mesh & lan (with NAT)
 iptables -I FORWARD -i br-mesh -o br-lan -j ACCEPT
 iptables -I FORWARD -i br-lan -o br-mesh -j ACCEPT
+iptables -I FORWARD -i br-mesh -o $wan_iface -j ACCEPT
 
 # create chains for the robinson fake net (depending on the inetable
 # state, this is used to route all TCP traffic to a local web server
@@ -62,13 +63,13 @@ do
 
 	## splash
 	# Add interface to splash chains
+	iptables -t nat -N splash_db_1_meshfsm
 	iptables -t nat -A PREROUTING -s $net_mesh ! -d $net_mesh \
 			-j prerouting_inet_splashed
 	iptables -t nat -A PREROUTING -s $net_mesh ! -d $net_mesh \
 			-j prerouting_inet_unsplashed
 
-	# route everything except to private subnets over wan
-	iptables -I FORWARD -j ACCEPT
+	# Don't route privat subnets 
 	iptables -I FORWARD -i $mesh_iface -d 192.168.0.0/16 -j DROP
 	iptables -I FORWARD -i $mesh_iface -d 172.16.0.0/12 -j DROP
 	iptables -I FORWARD -i $mesh_iface -d 10.0.0.0/8 -j DROP
